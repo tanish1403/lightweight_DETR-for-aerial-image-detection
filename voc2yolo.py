@@ -2,42 +2,44 @@ import random
 import os
 import xml.etree.ElementTree as ET
 from utils import extract_classes, get_classes
+import math
 
+# Configuration
+ANN_MODE = 0
+TRAIN_PERCENT = 0.8
+VAL_PERCENT = 0.1
+TEST_PERCENT = 0.1
+VOC_ANN_PATH = "..\\dataset\\SCCOS"
+OUTPUT_PATH = "organized_dataset"
+CLASSES_FILE = "classes.txt"
 
-ann_mode = 0
-
-train_percent = 0.8
-val_percent = 0.1
-test_percent = 0.1
-
-voc_ann_path = "..\dataset\SCCOS"
-voc_ann_sets = ['train', 'val', 'test']
-classes = "classes.txt"
-if not os.path.exists(classes):
-    extract_classes(voc_ann_path, classes)
-    classes = get_classes(classes)
+# Load or extract classes
+if not os.path.exists(CLASSES_FILE):
+    extract_classes(VOC_ANN_PATH, CLASSES_FILE)
+    CLASSES = get_classes(CLASSES_FILE)
 else:
-    classes, _ = get_classes(classes)
+    CLASSES, _ = get_classes(CLASSES_FILE)
 
-print(classes)
+print(CLASSES)
 
-
-def convert_ann(img_id, list_file):
-    in_file = open(os.path.join(voc_ann_path,  '%s.xml' % (img_id)), encoding='utf-8')
-    # print(os.path.exists(os.path.join(voc_ann_path,  '%s.xml' % (img_id))))
-    tree=ET.parse(in_file)
-    root = tree.getroot()
-  
+def parse_annotation(img_id):
+    """Parse XML annotations for a given image ID."""
+    annotation_file = os.path.join(VOC_ANN_PATH, f'{img_id}.xml')
+    if not os.path.exists(annotation_file):
+        return []
     
+    tree = ET.parse(annotation_file)
+    root = tree.getroot()
+    annotations = []
+
     for obj in root.iter('object'):
-        diff = 0
-        if obj.find('difficult') is not None:
-            diff = obj.find('difficult').text
+        difficulty = int(obj.find('difficult').text) if obj.find('difficult') is not None else 0
         cls = obj.find('name').text
-        if cls not in classes or int(diff) == 1:
+
+        if cls not in CLASSES or difficulty == 1:
             continue
-        cls_id = classes.index(cls)
-        
+
+        cls_id = CLASSES.index(cls)
         bndbox = obj.find('robndbox')
         if bndbox is not None:
             cx = float(bndbox.find('cx').text)
@@ -46,71 +48,66 @@ def convert_ann(img_id, list_file):
             h = float(bndbox.find('h').text)
             angle = float(bndbox.find('angle').text)
 
-            x_min = cx - w/2
-            x_max = cx + w/2
-            y_min = cy - h/2
-            y_max = cy + h/2
+            # Calculate rotated vertices
+            hw, hh = w / 2, h / 2
+            cos_a, sin_a = math.cos(angle), math.sin(angle)
+            corners = [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
 
-            list_file.write(" " + ",".join([str(a) for a in [x_min, y_min, x_max, y_max]]) + f",{cls_id}")            
+            vertices = [(cx + x * cos_a - y * sin_a, cy + x * sin_a + y * cos_a) for x, y in corners]
+            annotations.append((cls_id, vertices))
 
+    return annotations
 
+def write_image_and_annotations(img_id, split_dir):
+    """Copy image and write annotations to the split directory."""
+    # Copy the image file
+    image_src = os.path.join(VOC_ANN_PATH, f"{img_id}.jpg")
+    image_dest = os.path.join(split_dir, f"{img_id}.jpg")
+    if os.path.exists(image_src):
+        os.makedirs(split_dir, exist_ok=True)
+        with open(image_dest, "wb") as out_file:
+            with open(image_src, "rb") as in_file:
+                out_file.write(in_file.read())
     
+    # Write annotation file
+    annotations = parse_annotation(img_id)
+    annotation_file = os.path.join(split_dir, f"{img_id}.txt")
+    with open(annotation_file, "w") as file:
+        for cls_id, vertices in annotations:
+            vertex_str = " ".join(f"{x} {y}" for x, y in vertices)
+            file.write(f"{cls_id} {vertex_str}\n")
 
-def train_val_test_ids(train_percent, val_percent, test_percent):
-    train_txt = "train_id.txt"
-    val_txt = "val_id.txt"
-    test_txt = "test_id.txt"
-    # creating train, val, test id text files
-    
-    img_ids = [img_id.split('.')[0] for img_id in os.listdir(os.path.join(voc_ann_path)) if img_id.endswith('.xml')]
-   
+def split_dataset(train_percent, val_percent, test_percent):
+    """Split dataset into train, validation, and test sets."""
+    img_ids = [img_id.split('.')[0] for img_id in os.listdir(VOC_ANN_PATH) if img_id.endswith('.xml')]
     random.shuffle(img_ids)
-    
+
     total = len(img_ids)
-    trainlim = int(total * train_percent)
-    vallim = int(total * val_percent) + trainlim
+    train_lim = int(total * train_percent)
+    val_lim = train_lim + int(total * val_percent)
 
-    train_ids = img_ids[:trainlim]
-    val_ids = img_ids[trainlim:vallim]
-    test_ids = img_ids[vallim:]
+    train_ids = img_ids[:train_lim]
+    val_ids = img_ids[train_lim:val_lim]
+    test_ids = img_ids[val_lim:]
 
-    with open(train_txt,"w") as f:
-        for imgs in train_ids:
-            f.write(imgs + "\n")
+    return train_ids, val_ids, test_ids
 
-    with open(val_txt,"w") as f:        
-        for imgs in val_ids:
-            f.write(imgs + "\n")
+def organize_dataset():
+    """Organize dataset into directories and create label files."""
+    # Create output directories
+    train_dir = os.path.join(OUTPUT_PATH, "train")
+    val_dir = os.path.join(OUTPUT_PATH, "val")
+    test_dir = os.path.join(OUTPUT_PATH, "test")
 
-    with open(test_txt,"w") as f:     
-        for imgs in test_ids:
-            f.write(imgs + "\n")
-    return
+    train_ids, val_ids, test_ids = split_dataset(TRAIN_PERCENT, VAL_PERCENT, TEST_PERCENT)
+
+    # Process each split
+    for split_dir, img_ids in zip([train_dir, val_dir, test_dir], [train_ids, val_ids, test_ids]):
+        os.makedirs(split_dir, exist_ok=True)
+        for img_id in img_ids:
+            write_image_and_annotations(img_id, split_dir)
+        print(f"{split_dir} organized with {len(img_ids)} images.")
 
 if __name__ == "__main__":
     random.seed(0)
-    
-    if os.path.exists("train_id.txt") and os.path.exists("val_id.txt") and os.path.exists("test_id.txt"):
-        print("train, val, test id files already exists")
-    else:
-        train_val_test_ids(train_percent, val_percent, test_percent)
-        print("train, val, test id files created")
-
-    for img_set in voc_ann_sets:
-        
-        img_ids = open(img_set + "_id.txt", encoding='utf-8').read().strip().split()
-        list_file = open(img_set + ".txt", 'w', encoding='utf-8') 
-        
-        for img_id in img_ids:
-            list_file.write(os.path.join(voc_ann_path, '%s.jpg\n' % (img_id)))
-            
-            convert_ann(img_id, list_file)
-            list_file.write('\n')
-        list_file.close()
-        # delete id file
-        
-        os.remove(img_set + "_id.txt")
-        print(img_set + " list file created")
-
-
-
+    organize_dataset()

@@ -102,6 +102,16 @@ def organize_dataset():
     train_ids, val_ids, test_ids = split_dataset(TRAIN_PERCENT, VAL_PERCENT, TEST_PERCENT)
 
     # Process each split
+    with open("train_id.txt", "w") as f:
+        for id in train_ids:
+            f.write(id + "\n")
+    with open("val_id.txt", "w") as f:
+        for id in val_ids:
+            f.write(id + "\n")
+    with open("test_id.txt", "w") as f:
+        for id in test_ids:
+            f.write(id + "\n")
+            
     for split_dir, img_ids in zip([train_dir, val_dir, test_dir], [train_ids, val_ids, test_ids]):
         os.makedirs(split_dir, exist_ok=True)
         for img_id in img_ids:

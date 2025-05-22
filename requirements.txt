@@ -1,0 +1,9 @@
+pycocotools
+tqdm
+scipy
+timm
+fvcore
+tensorboard
+cython
+torchvision
+opencv-python

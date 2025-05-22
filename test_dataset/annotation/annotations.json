@@ -1,0 +1,26 @@
+{
+  "images": [
+    {
+      "id": 1,
+      "file_name": "test_image.jpg",
+      "width": 1024,
+      "height": 1024
+    }
+  ],
+  "annotations": [
+    {
+      "id": 1,
+      "image_id": 1,
+      "category_id": 1,
+      "bbox": [393.23, 726.1, 69.68, 351.38, 0.45],
+      "area": 5000,
+      "iscrowd": 0
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "ship"
+    }
+  ]
+}

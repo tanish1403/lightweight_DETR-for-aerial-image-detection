@@ -34,7 +34,7 @@ from torch.nn.parallel import DistributedDataParallel
 # needed due to empty tensor bug in pytorch and torchvision 0.5
 import torchvision
 
-from torchvision.ops import _new_empty_tensor
+# from torchvision.ops import _new_empty_tensor
 from torchvision.ops.misc import _output_size
 
 
@@ -531,8 +531,8 @@ def interpolate(input, size=None, scale_factor=None, mode="nearest", align_corne
         output_shape = _output_size(2, input, size, scale_factor)
         output_shape = list(input.shape[:-2]) + list(output_shape)
         if float(torchvision.__version__[:3]) < 0.5:
-            return _NewEmptyTensorOp.apply(input, output_shape)
-        return _new_empty_tensor(input, output_shape)
+            return torch.empty.apply(input, output_shape)
+        return torch.empty(input, output_shape)
     else:
         return torchvision.ops.misc.interpolate(input, size, scale_factor, mode, align_corners)
 
